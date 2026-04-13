@@ -22,27 +22,21 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y bc bison build-essential curl flex gcc-aarch64-linux-gnu clang lld llvm libssl-dev libelf-dev
 
-    - name: 3. Injetar KernelSU e Patches de Compatibilidade
+    - name: 3. Injetar KernelSU (Versão de Compatibilidade Estável)
       run: |
-        # Injeta o KernelSU
-        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
+        # O Pulo do Gato: Baixa o script da versão estável v0.9.5 em vez da MAIN experimental
+        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/v0.9.5/kernel/setup.sh" | bash -s v0.9.5
         
-        # Patch 1: Erro de Namespace (Linha 221)
-        sed -i '221s/^/\/\//' drivers/kernelsu/core/init.c
+        # Patch Cirúrgico de Segurança (caso o erro da linha 221 ainda persista na v0.9.5)
+        sed -i '221s/^/\/\//' drivers/kernelsu/core/init.c || true
         
-        # Patch 2: Compatibilidade de função para Android 16 (copy_to_kernel_nofault)
-        # Substituímos a função problemática pela função padrão de escrita segura do kernel
-        sed -i 's/copy_to_kernel_nofault/probe_kernel_write/g' drivers/kernelsu/hook/arm64/patch_memory.c || true
-        
-        echo "Patches de compatibilidade aplicados."
+        echo "KernelSU v0.9.5 injetado e preparado."
 
     - name: 4. Preparar Configuração (Defconfig)
       run: |
         export ARCH=arm64
         export SUBARCH=arm64
         make O=out fire_defconfig
-        
-        # Aceita novas opções e desativa o bloqueio por avisos (WERROR)
         make O=out olddefconfig
         sed -i 's/CONFIG_WERROR=y/CONFIG_WERROR=n/g' out/.config
 
