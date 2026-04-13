@@ -20,24 +20,25 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y bc bison build-essential curl flex gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi clang lld llvm libssl-dev libelf-dev
 
-    - name: 3. Injetar KernelSU-Next e Patches de Retrocompatibilidade
+    - name: 3. Injetar KernelSU-Next (Versão Ancorada para Compatibilidade)
       run: |
-        curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+        # 1. Clonar o repositório em vez de usar o script de setup (dá-nos controlo total)
+        cd Kernel
+        git clone https://github.com/rifsxd/KernelSU-Next.git drivers/kernelsu
         
-        # Patch 1: Neutralizar o macro de namespace inexistente no Linux 4.19
+        # 2. Ancorar na versão específica que suporta 4.19 nativamente
+        cd drivers/kernelsu
+        git checkout tags/v1.0.3 -b native-419-support
+        cd ../../
+        
+        # 3. Patch 1: Apenas neutralizamos o macro MODULE_IMPORT_NS (Este erro é universal no 4.19)
         sed -i 's/^MODULE_IMPORT_NS/\/\/ MODULE_IMPORT_NS/g' drivers/kernelsu/core/init.c
         
-        # Patch 2: Backport da API de escrita em memória
-        sed -i 's/copy_to_kernel_nofault/probe_kernel_write/g' drivers/kernelsu/hook/arm64/patch_memory.c
+        # 4. Integrar o KSU na árvore de compilação (Makefiles)
+        echo 'source "drivers/kernelsu/Kconfig"' >> arch/arm64/Kconfig
+        echo 'obj-y += kernelsu/' >> drivers/Makefile
         
-        # Patch 3: VFS (file_wrapper.c) - Anulação tática para evitar colisões
-        sed -i 's/return orig->f_op->iopoll(kiocb, spin);/return -EINVAL;/g' drivers/kernelsu/infra/file_wrapper.c
-        sed -i 's/p->ops.iopoll = fp->f_op->iopoll ? ksu_wrapper_iopoll : NULL;/\/\/ iopoll disabled/g' drivers/kernelsu/infra/file_wrapper.c
-        
-        sed -i 's/p->ops.remap_file_range =/\/\/ remap_file_range disabled/g' drivers/kernelsu/infra/file_wrapper.c
-        sed -i 's/fp->f_op->remap_file_range ? ksu_wrapper_remap_file_range : NULL;/\/\/ remap_file_range disabled/g' drivers/kernelsu/infra/file_wrapper.c
-        
-        sed -i 's/if (remap_flags & REMAP_FILE_DEDUP)/if (0)/g' drivers/kernelsu/infra/file_wrapper.c
+        echo "Motor KSU-Next (v1.0.3) ancorado e integrado nativamente."
 
     - name: 4. Preparar Configuração (Defconfig)
       run: |
