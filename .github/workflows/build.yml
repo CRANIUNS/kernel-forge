@@ -1,52 +1,64 @@
 name: Forja do KernelSU - Redmi 12 (Fire)
 
 on:
-  workflow_dispatch: # Permite ativar a compilação com um botão
+  workflow_dispatch: # Botão manual para iniciar a forja
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true # Silencia avisos de infraestrutura
 
 jobs:
   build-kernel:
-    runs-on: ubuntu-latest # Sobe uma VM com Ubuntu de alta performance
+    runs-on: ubuntu-latest
 
     steps:
-    - name: 1. Sequestrar o Código-Fonte Original
+    - name: 1. Sequestrar o Código-Fonte (Lineage 23.2)
       uses: actions/checkout@v4
       with:
         repository: mt6768-dev/android_kernel_xiaomi_fire
         ref: lineage-23.2
 
-    - name: 2. Instalar Arsenal de Compilação (Toolchains)
+    - name: 2. Instalar Arsenal de Compilação
       run: |
         sudo apt-get update
         sudo apt-get install -y bc bison build-essential curl flex gcc-aarch64-linux-gnu clang lld llvm libssl-dev libelf-dev
 
-    - name: 3. Injetar o KernelSU e Corrigir Código C
+    - name: 3. Injetar KernelSU e Patches de Código
       run: |
         # Injeta o KernelSU
         curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
         
-        # O PULO DO GATO: Remove a linha que está causando o erro de compilação
-        # Estamos usando o 'sed' para apagar a linha 221 (ou qualquer linha que contenha esse erro)
-        sed -i '/MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);/d' drivers/kernelsu/core/init.c
+        # Patch Cirúrgico: Comenta a linha 221 que causa erro de tipo no Clang
+        sed -i '221s/^/\/\//' drivers/kernelsu/core/init.c
         
-        echo "Patch aplicado com sucesso no KernelSU!"
+        echo "Injeção e patches aplicados."
 
-    - name: 4. Preparar Variáveis e Defconfig
+    - name: 4. Preparar Configuração (Defconfig)
       run: |
         export ARCH=arm64
         export SUBARCH=arm64
+        # Gera a config base para o Redmi 12
         make O=out fire_defconfig
+        
+        # Aceita novas opções do Android 16 como padrão e desativa WERROR
+        make O=out olddefconfig
+        sed -i 's/CONFIG_WERROR=y/CONFIG_WERROR=n/g' out/.config
 
-    - name: 5. Força Bruta (Compilar)
+    - name: 5. Força Bruta (Compilação)
       run: |
         export ARCH=arm64
         export SUBARCH=arm64
-        make -j$(nproc --all) O=out CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip
+        # Usa todos os núcleos da VM do GitHub com a toolchain LLVM/Clang
+        make -j$(nproc --all) O=out \
+          CC=clang \
+          LD=ld.lld \
+          AR=llvm-ar \
+          NM=llvm-nm \
+          OBJCOPY=llvm-objcopy \
+          OBJDUMP=llvm-objdump \
+          STRIP=llvm-strip
 
-    - name: 6. Extrair o Troféu (Upload do Artefato)
+    - name: 6. Extrair o Kernel (Image.gz)
       uses: actions/upload-artifact@v4
       with:
-        name: Kernel-Redmi12-KSU
+        name: Kernel-Redmi12-Fire-KSU
         path: out/arch/arm64/boot/Image.gz
