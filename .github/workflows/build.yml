@@ -20,18 +20,22 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y bc bison build-essential curl flex gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi clang lld llvm libssl-dev libelf-dev
 
-    - name: 3. Injetar KernelSU-Next e Aplicar Patches de Compatibilidade
+    - name: 3. Injetar KernelSU-Next e Patches de Retrocompatibilidade
       run: |
         curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
         
-        # 1. Corrigir o erro MODULE_IMPORT_NS (que já vimos antes)
+        # Patch 1: Neutralizar o macro de namespace inexistente no Linux 4.19
         sed -i 's/^MODULE_IMPORT_NS/\/\/ MODULE_IMPORT_NS/g' drivers/kernelsu/core/init.c
         
-        # 2. Backport: Trocar copy_to_kernel_nofault por probe_kernel_write (para Kernel 4.19)
-        # Este comando procura a função nova e substitui pela antiga que o seu kernel entende.
+        # Patch 2: Backport da API de escrita em memória
         sed -i 's/copy_to_kernel_nofault/probe_kernel_write/g' drivers/kernelsu/hook/arm64/patch_memory.c
         
-        echo "Patches de compatibilidade para Kernel 4.19 aplicados."
+        # Patch 3: Neutralizar chamadas VFS modernas não suportadas pelo 4.19
+        sed -i 's/return orig->f_op->iopoll(kiocb, spin);/return -EINVAL;/g' drivers/kernelsu/infra/file_wrapper.c
+        sed -i 's/p->ops.iopoll = fp->f_op->iopoll ? ksu_wrapper_iopoll : NULL;/\/\/ iopoll disabled/g' drivers/kernelsu/infra/file_wrapper.c
+        sed -i 's/p->ops.remap_file_range =/\/\/ remap_file_range disabled/g' drivers/kernelsu/infra/file_wrapper.c
+        sed -i 's/fp->f_op->remap_file_range ? ksu_wrapper_remap_file_range : NULL;/\/\/ remap_file_range disabled/g' drivers/kernelsu/infra/file_wrapper.c
+        sed -i 's/if (remap_flags & REMAP_FILE_DEDUP)/if (0)/g' drivers/kernelsu/infra/file_wrapper.c
 
     - name: 4. Preparar Configuração (Defconfig)
       run: |
@@ -39,13 +43,13 @@ jobs:
         mkdir -p out
         make O=out ARCH=arm64 fire_defconfig
         
-        # Desativar WERROR para que avisos não matem a compilação
+        # Desativar interrupção por avisos cosméticos
         sed -i 's/CONFIG_WERROR=y/CONFIG_WERROR=n/g' out/.config
         
-        # Forçar ativação do KSU Next
+        # Ativar KernelSU na configuração do núcleo
         echo "CONFIG_KSU=y" >> out/.config
 
-    - name: 5. Força Bruta (Compilação)
+    - name: 5. Compilação do Núcleo (Clang)
       run: |
         export ARCH=arm64
         export KBUILD_BUILD_USER="hacker"
@@ -66,34 +70,21 @@ jobs:
 
     - name: 6. Configuração e Empacotamento AnyKernel3
       run: |
-        # 1. Clonar o template oficial
         git clone https://github.com/osm0sis/AnyKernel3.git
-        
-        # 2. Injetar o kernel recém-compilado (Image.gz)
         cp out/arch/arm64/boot/Image.gz AnyKernel3/
-        
-        # 3. Cirurgia no anykernel.sh para o Redmi 12 (fire)
         cd AnyKernel3
         
-        # Define o nome do dispositivo para evitar flash em aparelhos errados
+        # Parâmetros de segurança e arquitetura A/B
         sed -i 's/device.name1=maguro/device.name1=fire/g' anykernel.sh
         sed -i 's/device.name2=toroplus/device.name2=fire_global/g' anykernel.sh
-        
-        # Ativa o suporte a dispositivos A/B (Essencial para o Redmi 12)
         sed -i 's/is_slot_device=0/is_slot_device=1/g' anykernel.sh
-        
-        # Aponta para o bloco correto da partição de boot
         sed -i 's|block=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot|block=/dev/block/by-name/boot|g' anykernel.sh
-        
-        # Configura a compressão do ramdisk como automática para evitar quebras no Android 16
         sed -i 's/ramdisk_compression=gz/ramdisk_compression=auto/g' anykernel.sh
         
-        # 4. Gerar o artefato final
         zip -r ../Kernel-Next-Fire-Final.zip *
-        echo "Pacote AnyKernel3 configurado para arquitetura A/B e pronto para flash."
 
-    - name: 7. Upload do Artefato Final
+    - name: 7. Upload do Artefato
       uses: actions/upload-artifact@v4
       with:
         name: Kernel-Next-Flashable
-        path: Kernel-Next-Redmi12.zip
+        path: Kernel-Next-Fire-Final.zip
