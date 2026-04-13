@@ -1,0 +1,42 @@
+name: Forja do KernelSU - Redmi 12 (Fire)
+
+on:
+  workflow_dispatch: # Permite ativar a compilação com um botão
+
+jobs:
+  build-kernel:
+    runs-on: ubuntu-latest # Sobe uma VM com Ubuntu de alta performance
+
+    steps:
+    - name: 1. Sequestrar o Código-Fonte Original
+      uses: actions/checkout@v4
+      with:
+        repository: mt6768-dev/android_kernel_xiaomi_fire
+        ref: lineage-23.2
+
+    - name: 2. Instalar Arsenal de Compilação (Toolchains)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y bc bison build-essential curl flex gcc-aarch64-linux-gnu clang lld llvm libssl-dev libelf-dev
+
+    - name: 3. Injetar o Backdoor Ético (KernelSU)
+      run: |
+        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
+
+    - name: 4. Preparar Variáveis e Defconfig
+      run: |
+        export ARCH=arm64
+        export SUBARCH=arm64
+        make O=out fire_defconfig
+
+    - name: 5. Força Bruta (Compilar)
+      run: |
+        export ARCH=arm64
+        export SUBARCH=arm64
+        make -j$(nproc --all) O=out CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip
+
+    - name: 6. Extrair o Troféu (Upload do Artefato)
+      uses: actions/upload-artifact@v4
+      with:
+        name: Kernel-Redmi12-KSU
+        path: out/arch/arm64/boot/Image.gz
