@@ -20,28 +20,16 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y bc bison build-essential curl flex gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi clang lld llvm libssl-dev libelf-dev
 
-    - name: 3. Injetar KernelSU-Next (Versão Ancorada v1.0.3)
+    - name: 3. Injetar KernelSU-Next (Via Script Oficial v1.0.3)
       run: |
-        # 1. Clonar o repositório para uma pasta temporária
-        git clone https://github.com/rifsxd/KernelSU-Next.git ksu_tmp
+        # Usar o instalador oficial forçando o download da tag v1.0.3
+        curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/v1.0.3/kernel/setup.sh" | bash -s v1.0.3
         
-        # 2. Entrar na pasta temporária e ancorar na versão perfeita para o 4.19
-        cd ksu_tmp
-        git checkout tags/v1.0.3
-        cd ..
+        # Patch 1: Neutralizar o macro de namespace inexistente no 4.19
+        sed -i 's/^MODULE_IMPORT_NS/\/\/ MODULE_IMPORT_NS/g' drivers/kernelsu/core/init.c || true
         
-        # 3. Extrair APENAS o código do kernel para a árvore do nosso Linux
-        mv ksu_tmp/kernel drivers/kernelsu
-        rm -rf ksu_tmp
-        
-        # 4. Patch Cirúrgico: Agora o ficheiro está exatamente onde deve estar!
-        sed -i 's/^MODULE_IMPORT_NS/\/\/ MODULE_IMPORT_NS/g' drivers/kernelsu/core/init.c
-        
-        # 5. Integrar o KSU nos Makefiles originais
-        echo 'source "drivers/kernelsu/Kconfig"' >> arch/arm64/Kconfig
-        echo 'obj-y += kernelsu/' >> drivers/Makefile
-        
-        echo "Motor KSU-Next (v1.0.3) extraído, ancorado e integrado com sucesso."
+        # Patch 2: Backport da API de memória (copy_to_kernel_nofault -> probe_kernel_write)
+        sed -i 's/copy_to_kernel_nofault/probe_kernel_write/g' drivers/kernelsu/hook/arm64/patch_memory.c || true
 
     - name: 4. Preparar Configuração (Defconfig)
       run: |
