@@ -1,10 +1,7 @@
-name: Forja do KernelSU - Redmi 12 (Fire)
+name: Forja do KernelSU - Redmi 12 (Fire) - FIX
 
 on:
   workflow_dispatch:
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-kernel:
@@ -16,36 +13,39 @@ jobs:
       with:
         repository: mt6768-dev/android_kernel_xiaomi_fire
         ref: lineage-23.2
+        fetch-depth: 1
 
     - name: 2. Instalar Arsenal de Compilação
       run: |
         sudo apt-get update
-        sudo apt-get install -y bc bison build-essential curl flex gcc-aarch64-linux-gnu clang lld llvm libssl-dev libelf-dev
+        sudo apt-get install -y bc bison build-essential curl flex gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi clang lld llvm libssl-dev libelf-dev
 
-    - name: 3. Injetar KernelSU (Versão de Compatibilidade Estável)
+    - name: 3. Injetar KernelSU (Método Seguro Non-GKI)
       run: |
-        # O Pulo do Gato: Baixa o script da versão estável v0.9.5 em vez da MAIN experimental
-        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/v0.9.5/kernel/setup.sh" | bash -s v0.9.5
-        
-        # Patch Cirúrgico de Segurança (caso o erro da linha 221 ainda persista na v0.9.5)
-        sed -i '221s/^/\/\//' drivers/kernelsu/core/init.c || true
-        
-        echo "KernelSU v0.9.5 injetado e preparado."
+        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+        echo "KernelSU injetado com sucesso."
 
     - name: 4. Preparar Configuração (Defconfig)
       run: |
         export ARCH=arm64
-        export SUBARCH=arm64
-        make O=out fire_defconfig
-        make O=out olddefconfig
+        mkdir -p out
+        make O=out ARCH=arm64 fire_defconfig
+        # Desativar WERROR para evitar falhas por avisos bobos
         sed -i 's/CONFIG_WERROR=y/CONFIG_WERROR=n/g' out/.config
+        # Garantir que KSU está ativado no config
+        echo "CONFIG_KSU=y" >> out/.config
 
-    - name: 5. Força Bruta (Compilação)
+    - name: 5. Força Bruta (Compilação Clang)
       run: |
         export ARCH=arm64
-        export SUBARCH=arm64
+        export KBUILD_BUILD_USER="Craniuns"
+        export KBUILD_BUILD_HOST="KauaPenna"
         make -j$(nproc --all) O=out \
+          ARCH=arm64 \
           CC=clang \
+          CLANG_TRIPLE=aarch64-linux-gnu- \
+          CROSS_COMPILE=aarch64-linux-gnu- \
+          CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
           LD=ld.lld \
           AR=llvm-ar \
           NM=llvm-nm \
@@ -53,8 +53,17 @@ jobs:
           OBJDUMP=llvm-objdump \
           STRIP=llvm-strip
 
-    - name: 6. Extrair o Kernel (Image.gz)
+    - name: 6. Empacotar AnyKernel3 (Pronto para Flash)
+      run: |
+        git clone https://github.com/osm0sis/AnyKernel3.git
+        cp out/arch/arm64/boot/Image.gz AnyKernel3/
+        cd AnyKernel3
+        # Ajustar o AnyKernel3 para o Redmi 12
+        sed -i 's/device.name1=maguro/device.name1=fire/g' anykernel.sh
+        zip -r ../Kernel-Redmi12-KSU.zip *
+
+    - name: 7. Upload do Artefato Final
       uses: actions/upload-artifact@v4
       with:
-        name: Kernel-Redmi12-Fire-KSU
-        path: out/arch/arm64/boot/Image.gz
+        name: Kernel-KSU-Flashable
+        path: Kernel-Redmi12-KSU.zip
