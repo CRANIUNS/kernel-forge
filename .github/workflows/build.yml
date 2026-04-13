@@ -20,16 +20,18 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y bc bison build-essential curl flex gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi clang lld llvm libssl-dev libelf-dev
 
-    - name: 3. Injetar KernelSU-Next (O Especialista em Non-GKI)
+    - name: 3. Injetar KernelSU-Next e Aplicar Patches de Compatibilidade
       run: |
-        # Usando o Next em vez do Oficial
         curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
         
-        # O Pulo do Gato: Neutralizar o erro da linha 221 (MODULE_IMPORT_NS)
-        # Esse macro não existe no kernel 4.19, então vamos comentá-lo.
+        # 1. Corrigir o erro MODULE_IMPORT_NS (que já vimos antes)
         sed -i 's/^MODULE_IMPORT_NS/\/\/ MODULE_IMPORT_NS/g' drivers/kernelsu/core/init.c
         
-        echo "KernelSU Next injetado e patcheado para 4.19."
+        # 2. Backport: Trocar copy_to_kernel_nofault por probe_kernel_write (para Kernel 4.19)
+        # Este comando procura a função nova e substitui pela antiga que o seu kernel entende.
+        sed -i 's/copy_to_kernel_nofault/probe_kernel_write/g' drivers/kernelsu/hook/arm64/patch_memory.c
+        
+        echo "Patches de compatibilidade para Kernel 4.19 aplicados."
 
     - name: 4. Preparar Configuração (Defconfig)
       run: |
