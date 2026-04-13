@@ -1,17 +1,17 @@
 name: Forja do KernelSU - Redmi 12 (Fire)
 
 on:
-  workflow_dispatch: # Botão manual para iniciar a forja
+  workflow_dispatch:
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true # Silencia avisos de infraestrutura
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-kernel:
     runs-on: ubuntu-latest
 
     steps:
-    - name: 1. Sequestrar o Código-Fonte (Lineage 23.2)
+    - name: 1. Sequestrar o Código-Fonte
       uses: actions/checkout@v4
       with:
         repository: mt6768-dev/android_kernel_xiaomi_fire
@@ -22,24 +22,27 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y bc bison build-essential curl flex gcc-aarch64-linux-gnu clang lld llvm libssl-dev libelf-dev
 
-    - name: 3. Injetar KernelSU e Patches de Código
+    - name: 3. Injetar KernelSU e Patches de Compatibilidade
       run: |
         # Injeta o KernelSU
         curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
         
-        # Patch Cirúrgico: Comenta a linha 221 que causa erro de tipo no Clang
+        # Patch 1: Erro de Namespace (Linha 221)
         sed -i '221s/^/\/\//' drivers/kernelsu/core/init.c
         
-        echo "Injeção e patches aplicados."
+        # Patch 2: Compatibilidade de função para Android 16 (copy_to_kernel_nofault)
+        # Substituímos a função problemática pela função padrão de escrita segura do kernel
+        sed -i 's/copy_to_kernel_nofault/probe_kernel_write/g' drivers/kernelsu/hook/arm64/patch_memory.c || true
+        
+        echo "Patches de compatibilidade aplicados."
 
     - name: 4. Preparar Configuração (Defconfig)
       run: |
         export ARCH=arm64
         export SUBARCH=arm64
-        # Gera a config base para o Redmi 12
         make O=out fire_defconfig
         
-        # Aceita novas opções do Android 16 como padrão e desativa WERROR
+        # Aceita novas opções e desativa o bloqueio por avisos (WERROR)
         make O=out olddefconfig
         sed -i 's/CONFIG_WERROR=y/CONFIG_WERROR=n/g' out/.config
 
@@ -47,7 +50,6 @@ jobs:
       run: |
         export ARCH=arm64
         export SUBARCH=arm64
-        # Usa todos os núcleos da VM do GitHub com a toolchain LLVM/Clang
         make -j$(nproc --all) O=out \
           CC=clang \
           LD=ld.lld \
