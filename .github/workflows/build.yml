@@ -20,25 +20,24 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y bc bison build-essential curl flex gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi clang lld llvm libssl-dev libelf-dev
 
-    - name: 3. Injetar KernelSU-Next (Versão Ancorada para Compatibilidade)
+    - name: 3. Injetar KernelSU-Next (Versão Ancorada v1.0.3)
       run: |
-        # 1. Clonar o repositório em vez de usar o script de setup (dá-nos controlo total)
-        cd Kernel
+        # 1. Clonar diretamente para a pasta de drivers (já estamos na raiz do código)
         git clone https://github.com/rifsxd/KernelSU-Next.git drivers/kernelsu
         
-        # 2. Ancorar na versão específica que suporta 4.19 nativamente
+        # 2. Entrar no KSU, ancorar na tag compatível com 4.19 e voltar à raiz
         cd drivers/kernelsu
         git checkout tags/v1.0.3 -b native-419-support
         cd ../../
         
-        # 3. Patch 1: Apenas neutralizamos o macro MODULE_IMPORT_NS (Este erro é universal no 4.19)
+        # 3. Patch Cirúrgico: Neutralizar apenas o macro MODULE_IMPORT_NS (Universal no 4.19)
         sed -i 's/^MODULE_IMPORT_NS/\/\/ MODULE_IMPORT_NS/g' drivers/kernelsu/core/init.c
         
-        # 4. Integrar o KSU na árvore de compilação (Makefiles)
+        # 4. Integrar o KSU nos Makefiles originais do kernel
         echo 'source "drivers/kernelsu/Kconfig"' >> arch/arm64/Kconfig
         echo 'obj-y += kernelsu/' >> drivers/Makefile
         
-        echo "Motor KSU-Next (v1.0.3) ancorado e integrado nativamente."
+        echo "Motor KSU-Next (v1.0.3) ancorado e integrado com sucesso."
 
     - name: 4. Preparar Configuração (Defconfig)
       run: |
