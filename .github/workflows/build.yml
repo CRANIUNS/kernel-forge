@@ -1,4 +1,4 @@
-name: Forja do KernelSU - Redmi 12 (Fire) - FIX
+name: Forja do KernelSU Next - Redmi 12 (Fire)
 
 on:
   workflow_dispatch:
@@ -20,26 +20,34 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y bc bison build-essential curl flex gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi clang lld llvm libssl-dev libelf-dev
 
-    - name: 3. Injetar KernelSU (Método Seguro Non-GKI)
+    - name: 3. Injetar KernelSU-Next (O Especialista em Non-GKI)
       run: |
-        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
-        echo "KernelSU injetado com sucesso."
+        # Usando o Next em vez do Oficial
+        curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+        
+        # O Pulo do Gato: Neutralizar o erro da linha 221 (MODULE_IMPORT_NS)
+        # Esse macro não existe no kernel 4.19, então vamos comentá-lo.
+        sed -i 's/^MODULE_IMPORT_NS/\/\/ MODULE_IMPORT_NS/g' drivers/kernelsu/core/init.c
+        
+        echo "KernelSU Next injetado e patcheado para 4.19."
 
     - name: 4. Preparar Configuração (Defconfig)
       run: |
         export ARCH=arm64
         mkdir -p out
         make O=out ARCH=arm64 fire_defconfig
-        # Desativar WERROR para evitar falhas por avisos bobos
+        
+        # Desativar WERROR para que avisos não matem a compilação
         sed -i 's/CONFIG_WERROR=y/CONFIG_WERROR=n/g' out/.config
-        # Garantir que KSU está ativado no config
+        
+        # Forçar ativação do KSU Next
         echo "CONFIG_KSU=y" >> out/.config
 
-    - name: 5. Força Bruta (Compilação Clang)
+    - name: 5. Força Bruta (Compilação)
       run: |
         export ARCH=arm64
-        export KBUILD_BUILD_USER="Craniuns"
-        export KBUILD_BUILD_HOST="KauaPenna"
+        export KBUILD_BUILD_USER="hacker"
+        export KBUILD_BUILD_HOST="cachyos-lab"
         make -j$(nproc --all) O=out \
           ARCH=arm64 \
           CC=clang \
@@ -51,19 +59,39 @@ jobs:
           NM=llvm-nm \
           OBJCOPY=llvm-objcopy \
           OBJDUMP=llvm-objdump \
-          STRIP=llvm-strip
+          STRIP=llvm-strip \
+          KCFLAGS="-Wno-implicit-int -Wno-return-type"
 
-    - name: 6. Empacotar AnyKernel3 (Pronto para Flash)
+    - name: 6. Configuração e Empacotamento AnyKernel3
       run: |
+        # 1. Clonar o template oficial
         git clone https://github.com/osm0sis/AnyKernel3.git
+        
+        # 2. Injetar o kernel recém-compilado (Image.gz)
         cp out/arch/arm64/boot/Image.gz AnyKernel3/
+        
+        # 3. Cirurgia no anykernel.sh para o Redmi 12 (fire)
         cd AnyKernel3
-        # Ajustar o AnyKernel3 para o Redmi 12
+        
+        # Define o nome do dispositivo para evitar flash em aparelhos errados
         sed -i 's/device.name1=maguro/device.name1=fire/g' anykernel.sh
-        zip -r ../Kernel-Redmi12-KSU.zip *
+        sed -i 's/device.name2=toroplus/device.name2=fire_global/g' anykernel.sh
+        
+        # Ativa o suporte a dispositivos A/B (Essencial para o Redmi 12)
+        sed -i 's/is_slot_device=0/is_slot_device=1/g' anykernel.sh
+        
+        # Aponta para o bloco correto da partição de boot
+        sed -i 's|block=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot|block=/dev/block/by-name/boot|g' anykernel.sh
+        
+        # Configura a compressão do ramdisk como automática para evitar quebras no Android 16
+        sed -i 's/ramdisk_compression=gz/ramdisk_compression=auto/g' anykernel.sh
+        
+        # 4. Gerar o artefato final
+        zip -r ../Kernel-Next-Fire-Final.zip *
+        echo "Pacote AnyKernel3 configurado para arquitetura A/B e pronto para flash."
 
     - name: 7. Upload do Artefato Final
       uses: actions/upload-artifact@v4
       with:
-        name: Kernel-KSU-Flashable
-        path: Kernel-Redmi12-KSU.zip
+        name: Kernel-Next-Flashable
+        path: Kernel-Next-Redmi12.zip
