@@ -3,6 +3,9 @@ name: Forja do KernelSU - Redmi 12 (Fire)
 on:
   workflow_dispatch: # Permite ativar a compilação com um botão
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-kernel:
     runs-on: ubuntu-latest # Sobe uma VM com Ubuntu de alta performance
@@ -19,9 +22,16 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y bc bison build-essential curl flex gcc-aarch64-linux-gnu clang lld llvm libssl-dev libelf-dev
 
-    - name: 3. Injetar o Backdoor Ético (KernelSU)
+    - name: 3. Injetar o KernelSU e Corrigir Código C
       run: |
+        # Injeta o KernelSU
         curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
+        
+        # O PULO DO GATO: Remove a linha que está causando o erro de compilação
+        # Estamos usando o 'sed' para apagar a linha 221 (ou qualquer linha que contenha esse erro)
+        sed -i '/MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);/d' drivers/kernelsu/core/init.c
+        
+        echo "Patch aplicado com sucesso no KernelSU!"
 
     - name: 4. Preparar Variáveis e Defconfig
       run: |
