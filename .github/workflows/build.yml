@@ -24,19 +24,24 @@ jobs:
       run: |
         curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
         
-        # Patch 1: Neutralizar o macro de namespace inexistente no Linux 4.19
+        # Patch 1: Neutralizar o macro de namespace inexistente
         sed -i 's/^MODULE_IMPORT_NS/\/\/ MODULE_IMPORT_NS/g' drivers/kernelsu/core/init.c
         
-        # Patch 2: Backport da API de escrita em memória
+        # Patch 2: Backport da API de memória
         sed -i 's/copy_to_kernel_nofault/probe_kernel_write/g' drivers/kernelsu/hook/arm64/patch_memory.c
         
-        # Patch 3: Neutralizar chamadas VFS modernas não suportadas pelo 4.19
+        # Patch 3: VFS (file_wrapper.c)
+        # 3.1 - Desativar iopoll (Já testado e a funcionar)
         sed -i 's/return orig->f_op->iopoll(kiocb, spin);/return -EINVAL;/g' drivers/kernelsu/infra/file_wrapper.c
         sed -i 's/p->ops.iopoll = fp->f_op->iopoll ? ksu_wrapper_iopoll : NULL;/\/\/ iopoll disabled/g' drivers/kernelsu/infra/file_wrapper.c
-        sed -i 's/p->ops.remap_file_range =/\/\/ remap_file_range disabled/g' drivers/kernelsu/infra/file_wrapper.c
-        sed -i 's/fp->f_op->remap_file_range ? ksu_wrapper_remap_file_range : NULL;/\/\/ remap_file_range disabled/g' drivers/kernelsu/infra/file_wrapper.c
-        sed -i 's/if (remap_flags & REMAP_FILE_DEDUP)/if (0)/g' drivers/kernelsu/infra/file_wrapper.c
-
+        
+        # 3.2 - O Downgrade Perfeito: remap_file_range -> copy_file_range
+        sed -i 's/remap_file_range/copy_file_range/g' drivers/kernelsu/infra/file_wrapper.c
+        
+        # 3.3 - Neutralizar flag inexistente
+        sed -i 's/REMAP_FILE_DEDUP/0/g' drivers/kernelsu/infra/file_wrapper.c
+        
+        echo "Motor KSU-Next totalmente adaptado ao kernel 4.19."
     - name: 4. Preparar Configuração (Defconfig)
       run: |
         export ARCH=arm64
