@@ -8,11 +8,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: 1. Sequestrar o Código-Fonte
+    - name: 1. Sequestrar o Código-Fonte (Target: xxblebleblexx)
       uses: actions/checkout@v4
       with:
-        repository: mt6768-dev/android_kernel_xiaomi_fire
-        ref: lineage-23.2
+        repository: xxblebleblexx/android_kernel_xiaomi_fire
         fetch-depth: 1
 
     - name: 2. Instalar Arsenal de Compilação
@@ -35,6 +34,8 @@ jobs:
       run: |
         export ARCH=arm64
         mkdir -p out
+        
+        # ATENÇÃO: Assumimos que o defconfig continua a chamar-se 'fire_defconfig'
         make O=out ARCH=arm64 fire_defconfig
         
         # Desativar interrupção por avisos cosméticos
